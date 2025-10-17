@@ -56,7 +56,7 @@ gcloud functions deploy transcript-retriever \
 
 ### Step 7
 
-Replace the notificationUrl with the URL of the function that is created in .env file
+In the .env file, replace the NOTIFICATION_URL with the URL of the function that is created in Step 6
 
 ### Step 8
 Run subscribe.py to create a subscription to call and meeting transcripts.
