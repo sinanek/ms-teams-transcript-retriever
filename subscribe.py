@@ -13,10 +13,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Configuration ---
-CLIENT_ID = "8d26bdaf-6c6d-44a0-b9b8-3698e0812cab"
+CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
-TENANT_ID = "caa38daf-99d2-4f73-8492-0fc366809dec"
-NOTIFICATION_URL = "https://transcript-retriever-633265597134.europe-west1.run.app"
+TENANT_ID = os.environ.get("TENANT_ID")
+NOTIFICATION_URL = os.environ.get("NOTIFICATION_URL")
 
 async def create_subscription(resource_url:str):
     """Creates a new Microsoft Graph subscription."""
