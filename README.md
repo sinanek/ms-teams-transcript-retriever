@@ -52,8 +52,7 @@ gcloud functions deploy transcript-retriever \
 ```
 
 **Note:**
-- Replace `<YOUR_REGION>` with the Google Cloud region where you want to deploy the function (e.g., `us-central1`).
-- The runtime is set to `python311`, as Python 3.13 is not yet available as a Cloud Functions runtime. Please ensure that your code is compatible with Python 3.12.
+- Replace the region with the Google Cloud region where you want to deploy the function (e.g., `us-central1`).
 
 ### Step 7
 
@@ -85,6 +84,7 @@ This will allow you to test your function's logic without having to deploy it ev
 
 ## Things to improve
 - domain level filtering 
+- scheduled task for subscribing to notifications as they expire
 - only store transcripts in the organizers folder when meeting participants over a certain size
 - small optimizations in the code e.g. adding concurrency
 - error handling
