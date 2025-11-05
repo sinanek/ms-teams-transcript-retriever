@@ -9,6 +9,7 @@ dependencies = [
     "flask>=3.1.2",
     "functions-framework>=3.9.2",
     "google-genai>=1.47.0",
+    "markdown>=3.10",
     "microsoft-kiota-abstractions==1.9.6",
     "requests>=2.32.5",
 ]

@@ -3,6 +3,7 @@ from flask import jsonify
 import os
 import asyncio
 import re
+import markdown
 from azure.identity.aio import ClientSecretCredential
 from msgraph_beta import GraphServiceClient
 from msgraph_beta.generated.models.chat_message import ChatMessage
@@ -21,6 +22,7 @@ from msgraph_beta.generated.models.file_attachment import FileAttachment
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from . import prompt
 
 load_dotenv()
 # --- Configuration ---
@@ -41,7 +43,7 @@ async def summarize_with_gemini(transcript_content):
             types.Content(
                 role="user",
                 parts=[
-                    types.Part.from_text(text=f"summarize this transcript:\n{transcript_content}")
+                    types.Part.from_text(text=prompt.PROMPT.format(transcript_content=transcript_content))
                 ]
             )
         ]
@@ -106,7 +108,7 @@ async def update_meeting_notes(graph_client, user_id, meeting_info, summary):
             content_type = meeting_event.body.content_type if meeting_event.body and meeting_event.body.content_type else "html"
             
             # Format summary as HTML and append it
-            summary_html = f"<br><hr><h2>Meeting Summary</h2><p>{summary.replace(chr(10), '<br>')}</p>"
+            summary_html = f"<br><hr><h2>Meeting Summary</h2><p>{markdown.markdown(summary,extensions=['tables'])}</p>"
             new_body_content = original_body + summary_html
             
             new_body = ItemBody(
@@ -134,10 +136,10 @@ async def send_summary_email(graph_client, organizer_id, organizer_email, meetin
     Note: This function requires the 'Mail.Send' application permission in Azure AD.
     """
     try:
-        #Prepare the email body with the summary
+        summary_html = markdown.markdown(summary, extensions=['tables'])
         email_body = ItemBody(
             content_type=BodyType.Html,
-            content=f"<h2>Summary for your meeting: {meeting_subject}</h2><p>{summary.replace(chr(10), '<br>')}</p>"
+            content=f"<h2>Summary for your meeting: {meeting_subject}</h2>{summary_html}"
         )
 
         #Prepare the recipient (the meeting organizer)
@@ -255,7 +257,7 @@ async def fetch_transcript(resource_url):
                             )
                     except Exception as e:
                         print(f"Error preparing or sending summary email: {e}")
-                        raise
+                        
 
             if meeting_info and meeting_info.participants:
                 display_name = meeting_info.participants.organizer.identity.user.display_name
