@@ -4,6 +4,7 @@ import os
 import asyncio
 import re
 import markdown
+import logging
 from azure.identity.aio import ClientSecretCredential
 from msgraph_beta import GraphServiceClient
 from msgraph_beta.generated.models.chat_message import ChatMessage
@@ -23,8 +24,16 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from . import prompt
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.gcp.trace import CloudTraceSpanExporter
 
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 # --- Configuration ---
 CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
@@ -32,6 +41,14 @@ TENANT_ID = os.environ.get("TENANT_ID")
 GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT")
 GOOGLE_CLOUD_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION")
 
+# --- Tracing ---
+trace.set_tracer_provider(TracerProvider())
+trace.get_tracer_provider().add_span_processor(
+    BatchSpanProcessor(CloudTraceSpanExporter())
+)
+tracer = trace.get_tracer(__name__)
+
+@tracer.start_as_current_span("summarize_with_gemini")
 async def summarize_with_gemini(transcript_content):
     """Summarizes the transcript using Gemini."""
     try:
@@ -64,13 +81,14 @@ async def summarize_with_gemini(transcript_content):
             config=generate_content_config,
         ):
             response += chunk.text
-        print(response)
+        logging.info(response)
         return response
 
     except Exception as e:
-        print(f"Error summarizing with Gemini: {e}")
+        logging.error(f"Error summarizing with Gemini: {e}")
         return None
 
+@tracer.start_as_current_span("update_meeting_notes")
 async def update_meeting_notes(graph_client, user_id, meeting_info, summary):
     """
     Finds the calendar event for the meeting and updates its body with the summary.
@@ -84,7 +102,7 @@ async def update_meeting_notes(graph_client, user_id, meeting_info, summary):
     try:
         join_url = meeting_info.join_web_url
         if not join_url:
-            print("No join URL found for the meeting.")
+            logging.warning("No join URL found for the meeting.")
             return
 
         # Find the calendar event associated with the meeting by subject and start time
@@ -122,13 +140,14 @@ async def update_meeting_notes(graph_client, user_id, meeting_info, summary):
             
             # Patch the event with the new body
             await graph_client.users.by_user_id(user_id).events.by_event_id(event_id).patch(update_payload)
-            print(f"Successfully updated meeting notes for event: {event_id}")
+            logging.info(f"Successfully updated meeting notes for event: {event_id}")
         else:
-            print("Could not find a matching calendar event for the meeting.")
+            logging.warning("Could not find a matching calendar event for the meeting.")
 
     except Exception as e:
-        print(f"Error updating meeting notes: {e}")
+        logging.error(f"Error updating meeting notes: {e}")
 
+@tracer.start_as_current_span("send_summary_email")
 async def send_summary_email(graph_client, organizer_id, organizer_email, meeting_subject, summary, transcript_content, transcript_filename):
     """
     Sends an email to the organizer with the summary and transcript.
@@ -174,11 +193,12 @@ async def send_summary_email(graph_client, organizer_id, organizer_email, meetin
         )
 
         await graph_client.users.by_user_id(organizer_id).send_mail.post(request_body)
-        print(f"Summary email sent successfully to {organizer_email}")
+        logging.info(f"Summary email sent successfully to {organizer_email}")
 
     except Exception as e:
-        print(f"Error sending summary email: {e}")
+        logging.error(f"Error sending summary email: {e}")
 
+@tracer.start_as_current_span("fetch_transcript")
 async def fetch_transcript(resource_url):
     """Fetches the transcript content from the given resource URL."""
 
@@ -226,9 +246,9 @@ async def fetch_transcript(resource_url):
             #     )
             #     try:
             #         await graph_client.chats.by_chat_id(chat_id).messages.post(chat_message)
-            #         print(f"Summary sent to Teams channel: {chat_id}")
+            #         logging.info(f"Summary sent to Teams channel: {chat_id}")
             #     except Exception as e:
-            #         print(f"Error sending summary to Teams channel: {e}")
+            #         logging.error(f"Error sending summary to Teams channel: {e}")
 
             # Update meeting notes with summary
             if summary and meeting_info:
@@ -256,7 +276,7 @@ async def fetch_transcript(resource_url):
                                 transcript_filename=transcript_filename
                             )
                     except Exception as e:
-                        print(f"Error preparing or sending summary email: {e}")
+                        logging.error(f"Error preparing or sending summary email: {e}")
                         
 
             if meeting_info and meeting_info.participants:
@@ -265,71 +285,73 @@ async def fetch_transcript(resource_url):
                 transcript_filename = f"{base_filename}_transcript.txt"
                 summary_filename = f"{base_filename}_summary.txt"
                 
-                print("Meeting Organizer:")
+                logging.info("Meeting Organizer:")
                 if meeting_info.participants.organizer and meeting_info.participants.organizer.identity and meeting_info.participants.organizer.identity.user:
                     organizer_id = meeting_info.participants.organizer.identity.user.id
                     
-                    print(f"  - {display_name if display_name else organizer_id}")
+                    logging.info(f"  - {display_name if display_name else organizer_id}")
                     org_drive = await graph_client.users.by_user_id(organizer_id).drive.get()
-                    print(f"    Drive ID: {org_drive.id}")
+                    logging.info(f"    Drive ID: {org_drive.id}")
                     recordings_folder = await graph_client.drives.by_drive_id(org_drive.id).special.by_drive_item_id('recordings').get()
                     if recordings_folder and recordings_folder.id:
                         drive_id = recordings_folder.parent_reference.drive_id
                         recordings_folder_id = recordings_folder.id
                         # Upload the transcript
                         await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(recordings_folder_id).children.by_drive_item_id1(transcript_filename).content.put(transcript_content_bytes)
-                        print(f"Transcript uploaded successfully: {transcript_filename}")
+                        logging.info(f"Transcript uploaded successfully: {transcript_filename}")
                         
                         # Upload the summary
                         if summary:
                             summary_bytes = summary.encode('utf-8')
                             await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(recordings_folder_id).children.by_drive_item_id1(summary_filename).content.put(summary_bytes)
-                            print(f"Summary uploaded successfully: {summary_filename}")
+                            logging.info(f"Summary uploaded successfully: {summary_filename}")
 
-                print("Meeting Attendees:")
+                logging.info("Meeting Attendees:")
                 if meeting_info.participants.attendees:
                     for attendee in meeting_info.participants.attendees:
                         if attendee.identity and attendee.identity.user:
                             attendee_id = attendee.identity.user.id
                             display_name = attendee.identity.user.display_name
-                            print(f"  - {display_name if display_name else attendee_id}")
+                            logging.info(f"  - {display_name if display_name else attendee_id}")
                             att_drive = await graph_client.users.by_user_id(attendee_id).drive.get()
-                            print(f"    Drive ID: {att_drive.id}")
+                            logging.info(f"    Drive ID: {att_drive.id}")
                             recordings_folder = await graph_client.drives.by_drive_id(att_drive.id).special.by_drive_item_id('recordings').get()
                             if recordings_folder and recordings_folder.id:
                                 drive_id = recordings_folder.parent_reference.drive_id
                                 recordings_folder_id = recordings_folder.id
                                 # Upload the transcript
                                 await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(recordings_folder_id).children.by_drive_item_id1(transcript_filename).content.put(transcript_content_bytes)
-                                print(f"Transcript uploaded successfully: {transcript_filename} for attendee: {display_name if display_name else attendee_id}")
+                                logging.info(f"Transcript uploaded successfully: {transcript_filename} for attendee: {display_name if display_name else attendee_id}")
 
                                 # Upload the summary
                                 if summary:
                                     summary_bytes = summary.encode('utf-8')
                                     await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(recordings_folder_id).children.by_drive_item_id1(summary_filename).content.put(summary_bytes)
-                                    print(f"Summary uploaded successfully: {summary_filename} for attendee: {display_name if display_name else attendee_id}")
+                                    logging.info(f"Summary uploaded successfully: {summary_filename} for attendee: {display_name if display_name else attendee_id}")
 
         except Exception as e:
-            print(f"Error fetching transcript or participants: {e}")
+            logging.error(f"Error fetching transcript or participants: {e}")
 
 @functions_framework.http
 def main(request):
     """HTTP Cloud Function to handle Microsoft Graph notifications."""
+    with tracer.start_as_current_span("main") as span:
+        # Handle subscription validation
+        validation_token = request.args.get('validationToken')
+        if validation_token:
+            logging.info(f"Validation token received: {validation_token}")
+            span.set_attribute("validation_token", validation_token)
+            return validation_token, 200, {'Content-Type': 'text/plain'}
 
-    # Handle subscription validation
-    validation_token = request.args.get('validationToken')
-    if validation_token:
-        print("Validation token received:", validation_token)
-        return validation_token, 200, {'Content-Type': 'text/plain'}
-
-    # Handle notification
-    request_json = request.get_json(silent=True)
-    if request_json:
-        print("Received Microsoft Graph notification:")
-        resource_url = request_json['value'][0]['resource']
-        print(f"  Resource URL: {resource_url}")
-        asyncio.run(fetch_transcript(resource_url))
-        return jsonify({"status": "received"}), 200
-    else:
-        print("No JSON payload received.")
-        return jsonify({"error": "Invalid request"}), 400
+        # Handle notification
+        request_json = request.get_json(silent=True)
+        if request_json:
+            logging.info("Received Microsoft Graph notification:")
+            resource_url = request_json['value'][0]['resource']
+            span.set_attribute("resource_url", resource_url)
+            logging.info(f"  Resource URL: {resource_url}")
+            asyncio.run(fetch_transcript(resource_url))
+            return jsonify({"status": "received"}), 200
+        else:
+            logging.warning("No JSON payload received.")
+            return jsonify({"error": "Invalid request"}), 400
