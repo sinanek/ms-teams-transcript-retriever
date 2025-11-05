@@ -149,13 +149,12 @@ async def send_summary_email(graph_client, organizer_id, organizer_email, meetin
 
         #Prepare the transcript as a file attachment
         transcript_bytes = transcript_content.encode('utf-8')
-        encoded_transcript = base64.b64encode(transcript_bytes)
         
         attachment = FileAttachment(
             odata_type="#microsoft.graph.fileAttachment",
             name=transcript_filename,
             content_type="text/plain",
-            content_bytes=encoded_transcript
+            content_bytes=transcript_bytes
         )
 
         #Construct the final message
@@ -256,6 +255,7 @@ async def fetch_transcript(resource_url):
                             )
                     except Exception as e:
                         print(f"Error preparing or sending summary email: {e}")
+                        raise
 
             if meeting_info and meeting_info.participants:
                 display_name = meeting_info.participants.organizer.identity.user.display_name

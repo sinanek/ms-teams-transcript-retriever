@@ -12,7 +12,7 @@ Create an app registration on portal.azure.com
 
 ### Step 2
 Give the app the following permissions
-![alt text](images/image.png)
+![alt text](images/permissions.png)
 
 ### Step 3
 Create a client secret and copy the key
