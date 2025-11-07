@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 import os
+import logging
 
 from azure.identity.aio import ClientSecretCredential
 from kiota_authentication_azure.azure_identity_authentication_provider import (
@@ -11,6 +12,9 @@ from msgraph_beta.generated.models.subscription import Subscription
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Configuration ---
 CLIENT_ID = os.environ.get("CLIENT_ID")
@@ -40,22 +44,22 @@ async def create_subscription(resource_url:str):
     )
 
     try:
-        print("Creating subscription...")
+        logging.info("Creating subscription...")
         result = await graph_client.subscriptions.post(body=subscription)
 
         if result:
-            print(f"Subscription created successfully!")
-            print(f"  ID: {result.id}")
-            print(f"  Resource: {result.resource}")
-            print(f"  Expiration: {result.expiration_date_time}")
-            print(f"  Notification URL: {result.notification_url}")
+            logging.info("Subscription created successfully!")
+            logging.info(f"  ID: {result.id}")
+            logging.info(f"  Resource: {result.resource}")
+            logging.info(f"  Expiration: {result.expiration_date_time}")
+            logging.info(f"  Notification URL: {result.notification_url}")
 
     except Exception as e:
-        print(f"Error creating subscription: {e}")
+        logging.error(f"Error creating subscription: {e}")
 
 if __name__ == "__main__":
     if CLIENT_ID == "YOUR_CLIENT_ID" or CLIENT_SECRET == "YOUR_CLIENT_SECRET" or TENANT_ID == "YOUR_TENANT_ID":
-        print("Please configure CLIENT_ID, CLIENT_SECRET, and TENANT_ID before running the script.")
+        logging.warning("Please configure CLIENT_ID, CLIENT_SECRET, and TENANT_ID before running the script.")
     else:
         asyncio.run(create_subscription("communications/onlineMeetings/getAllTranscripts"))
         asyncio.run(create_subscription("communications/adhocCalls/getAllTranscripts"))
