@@ -2,7 +2,12 @@
 
 This project subscribes to Microsoft Graph notifications for meeting transcripts and provides a Cloud Function to receive the notifications and fetch the transcript content.
 
-The transcripts are stored in the local recordings folder for each user that was invited to the meeting.
+After retrieving the transcript, the following steps are performed:
+- The transcripts are stored in the local recordings folder for each user that was invited to the meeting. This can be used for developing further conversational capabilities using the OneDrive connector
+- The transcripts are summarized and action items are generated using Gemini
+- The summary is then:
+  - Sent to the Organizer via email
+  - Appended to the calendar invite for others to view
 
 
 ## Deployment
