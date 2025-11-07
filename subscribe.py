@@ -12,6 +12,7 @@ from msgraph_beta.generated.models.subscription import Subscription
 from dotenv import load_dotenv
 
 load_dotenv()
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class SubscriptionManager:
     """Manages Microsoft Graph subscriptions."""
@@ -41,7 +42,7 @@ class SubscriptionManager:
                 if subscription.resource == resource_url:
                     return subscription
         except Exception as e:
-            print(f"Error getting subscriptions: {e}")
+            logging.error(f"Error getting subscriptions: {e}")
         return None
 
     async def create_or_update_subscription(self, resource_url: str):
@@ -50,21 +51,21 @@ class SubscriptionManager:
         expiration_time = datetime.now(timezone.utc) + timedelta(hours=70)
 
         if existing_subscription:
-            print(f"Subscription for {resource_url} already exists. Updating...")
+            logging.info(f"Subscription for {resource_url} already exists. Updating...")
             subscription = Subscription(
                 expiration_date_time=expiration_time,
             )
             try:
                 result = await self.graph_client.subscriptions.by_subscription_id(existing_subscription.id).patch(body=subscription)
                 if result:
-                    print(f"Subscription updated successfully!")
-                    print(f"  ID: {result.id}")
-                    print(f"  Resource: {result.resource}")
-                    print(f"  Expiration: {result.expiration_date_time}")
+                    logging.info(f"Subscription updated successfully!")
+                    logging.info(f"ID: {result.id}")
+                    logging.info(f"Resource: {result.resource}")
+                    logging.info(f"Expiration: {result.expiration_date_time}")
             except Exception as e:
-                print(f"Error updating subscription: {e}")
+                logging.error(f"Error updating subscription: {e}")
         else:
-            print(f"Creating new subscription for {resource_url}...")
+            logging.info(f"Creating new subscription for {resource_url}...")
             subscription = Subscription(
                 change_type="created",
                 notification_url=self.notification_url,
@@ -76,13 +77,13 @@ class SubscriptionManager:
             try:
                 result = await self.graph_client.subscriptions.post(body=subscription)
                 if result:
-                    print(f"Subscription created successfully!")
-                    print(f"  ID: {result.id}")
-                    print(f"  Resource: {result.resource}")
-                    print(f"  Expiration: {result.expiration_date_time}")
-                    print(f"  Notification URL: {result.notification_url}")
+                    logging.info(f"Subscription created successfully!")
+                    logging.info(f"ID: {result.id}")
+                    logging.info(f"Resource: {result.resource}")
+                    logging.info(f"Expiration: {result.expiration_date_time}")
+                    logging.info(f"   URL: {result.notification_url}")
             except Exception as e:
-                print(f"Error creating subscription: {e}")
+                logging.error(f"Error creating subscription: {e}")
 
 async def main():
     """Main function to create or update subscriptions."""
@@ -91,7 +92,7 @@ async def main():
         await manager.create_or_update_subscription("communications/onlineMeetings/getAllTranscripts")
         await manager.create_or_update_subscription("communications/adhocCalls/getAllTranscripts")
     except ValueError as e:
-        print(e)
+        logging.exception(e)
 
 if __name__ == "__main__":
     asyncio.run(main())

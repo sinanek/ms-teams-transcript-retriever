@@ -16,4 +16,5 @@ dependencies = [
     "aiohttp==3.12.15",
     "azure-core==1.35.0",
     "azure-identity==1.24.0",
+    "opentelemetry-exporter-gcp-trace>=1.11.0",
 ]

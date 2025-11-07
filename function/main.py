@@ -1,6 +1,12 @@
+import sys
+import os
+
+# Fix for macOS fork issue with multiprocessing
+if sys.platform == 'darwin':
+    os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+
 import functions_framework
 from flask import jsonify
-import os
 import asyncio
 import re
 import markdown
@@ -27,7 +33,7 @@ from . import prompt
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.gcp.trace import CloudTraceSpanExporter
+from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 
 load_dotenv()
 
@@ -43,11 +49,34 @@ GOOGLE_CLOUD_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION")
 MAX_ATTENDEES = os.environ.get("MAX_ATTENDEES", 10)
 
 # --- Tracing ---
-trace.set_tracer_provider(TracerProvider())
-trace.get_tracer_provider().add_span_processor(
-    BatchSpanProcessor(CloudTraceSpanExporter())
-)
-tracer = trace.get_tracer(__name__)
+# trace.set_tracer_provider(TracerProvider())
+# trace.get_tracer_provider().add_span_processor(
+#     BatchSpanProcessor(CloudTraceSpanExporter())
+# )
+# tracer = trace.get_tracer(__name__)
+
+# Create a dummy tracer to disable tracing for debugging the fork issue
+class _DummySpan:
+    def set_attribute(self, key, value):
+        pass
+
+class _DecoratorAndContextManager:
+    def __call__(self, func):
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        return wrapper
+
+    def __enter__(self):
+        return _DummySpan()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+class DummyTracer:
+    def start_as_current_span(self, name):
+        return _DecoratorAndContextManager()
+
+tracer = DummyTracer()
 
 @tracer.start_as_current_span("summarize_with_gemini")
 async def summarize_with_gemini(transcript_content):
