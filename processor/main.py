@@ -6,7 +6,7 @@ if sys.platform == 'darwin':
     os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
 
 import functions_framework
-from flask import jsonify
+import json
 import asyncio
 import re
 import markdown
@@ -38,7 +38,7 @@ from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 
 # --- Configuration ---
 CLIENT_ID = os.environ.get("CLIENT_ID")
@@ -47,6 +47,7 @@ TENANT_ID = os.environ.get("TENANT_ID")
 GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT")
 GOOGLE_CLOUD_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION")
 MAX_ATTENDEES = os.environ.get("MAX_ATTENDEES", 10)
+MODEL_FOR_SUMMARIZATION=os.environ.get("MODEL_FOR_SUMMARIZATION", "gemini-2.5-flash")
 
 # --- Tracing ---
 # trace.set_tracer_provider(TracerProvider())
@@ -85,7 +86,7 @@ async def summarize_with_gemini(transcript_content):
         client = genai.Client(
             vertexai=True,project=GOOGLE_CLOUD_PROJECT,location=GOOGLE_CLOUD_LOCATION
         )
-        model = "gemini-2.5-flash-preview-09-2025"
+        model = MODEL_FOR_SUMMARIZATION
         contents = [
             types.Content(
                 role="user",
@@ -111,7 +112,7 @@ async def summarize_with_gemini(transcript_content):
             config=generate_content_config,
         ):
             response += chunk.text
-        logging.info(response)
+        logging.debug(response)
         return response
 
     except Exception as e:
@@ -339,7 +340,7 @@ async def fetch_transcript(resource_url):
                 logging.info("Meeting Attendees:")
                 if meeting_info.participants.attendees:
                     if len(meeting_info.participants.attendees) > int(MAX_ATTENDEES):
-                        print(f"Attendee count ({len(meeting_info.participants.attendees)}) exceeds MAX_ATTENDEES ({MAX_ATTENDEES}). Skipping attendees.")
+                        logging.info(f"Attendee count ({len(meeting_info.participants.attendees)}) exceeds MAX_ATTENDEES ({MAX_ATTENDEES}). Skipping attendees.")
                     else:
                         for attendee in meeting_info.participants.attendees:
                             if attendee.identity and attendee.identity.user:
@@ -365,26 +366,21 @@ async def fetch_transcript(resource_url):
         except Exception as e:
             logging.error(f"Error fetching transcript or participants: {e}")
 
-@functions_framework.http
-def main(request):
-    """HTTP Cloud Function to handle Microsoft Graph notifications."""
+@functions_framework.cloud_event
+def main(cloud_event):
+    """Triggered from a message on a Cloud Pub/Sub topic."""
     with tracer.start_as_current_span("main") as span:
-        # Handle subscription validation
-        validation_token = request.args.get('validationToken')
-        if validation_token:
-            logging.info(f"Validation token received: {validation_token}")
-            span.set_attribute("validation_token", validation_token)
-            return validation_token, 200, {'Content-Type': 'text/plain'}
-
-        # Handle notification
-        request_json = request.get_json(silent=True)
+        # The Pub/Sub message is passed as the data attribute of the CloudEvent.
+        message_data = base64.b64decode(cloud_event.data["message"]["data"]).decode("utf-8")
+        request_json = json.loads(message_data)
+        
         if request_json:
-            logging.info("Received Microsoft Graph notification:")
+            logging.info("Received message from Pub/Sub:")
             resource_url = request_json['value'][0]['resource']
             span.set_attribute("resource_url", resource_url)
             logging.info(f"  Resource URL: {resource_url}")
             asyncio.run(fetch_transcript(resource_url))
-            return jsonify({"status": "received"}), 200
+            return 'OK', 200
         else:
-            logging.warning("No JSON payload received.")
-            return jsonify({"error": "Invalid request"}), 400
+            logging.warning("No JSON payload received in Pub/Sub message.")
+            return 'Bad Request', 400

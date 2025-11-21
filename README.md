@@ -46,14 +46,12 @@ To deploy the Cloud Function, you will need to have the [Google Cloud SDK](https
 Run the following command to deploy the function:
 
 ```bash
-gcloud functions deploy transcript-retriever \
-  --gen2 \
-  --runtime python311 \
-  --trigger-http \
-  --entry-point main \
-  --source function/ \
+gcloud run deploy transcript-processor \
+  --function main \
+  --source processor/ \
+  --base-image python313 \
   --region europe-west1 \
-  --allow-unauthenticated
+  --env-vars-file=.env
 ```
 
 **Note:**
@@ -90,6 +88,5 @@ This will allow you to test your function's logic without having to deploy it ev
 ## Things to improve
 - domain level filtering 
 - scheduled task for subscribing to notifications as they expire
-- only store transcripts in the organizers folder when meeting participants over a certain size
 - small optimizations in the code e.g. adding concurrency
 - error handling

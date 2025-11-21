@@ -12,7 +12,7 @@ from msgraph_beta.generated.models.subscription import Subscription
 from dotenv import load_dotenv
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 
 class SubscriptionManager:
     """Manages Microsoft Graph subscriptions."""
