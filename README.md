@@ -9,6 +9,8 @@ After retrieving the transcript, the following steps are performed:
   - Sent to the Organizer via email
   - Appended to the calendar invite for others to view
 
+# Architecture
+![alt text](images/architecture.png)
 
 ## Deployment
 
