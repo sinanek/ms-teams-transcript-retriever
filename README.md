@@ -39,13 +39,44 @@ More on access policies here: https://learn.microsoft.com/en-us/graph/cloud-comm
 ### Step 5
 Take the application id + tenant id for the app registration and the key you just created and configure the variables in a .env file (example provided in .env.example)
 ![alt text](images/image-2.png)
-### Step 6
+![alt text](images/image-2.png)
 
-Deploy main.py as a function
+### Step 6
+Create the secrets in Google Cloud Secret Manager. The deploy commands below expect these secrets to verify the tenant and authenticate with Microsoft Graph.
+
+```bash
+printf "your-client-id" | gcloud secrets create CLIENT_ID --data-file=-
+printf "your-client-secret" | gcloud secrets create CLIENT_SECRET --data-file=-
+printf "your-tenant-id" | gcloud secrets create TENANT_ID --data-file=-
+```
+
+### Step 7
+Create the Pub/Sub topic that the receiver will publish to.
+
+```bash
+chmod +x create-topic.sh
+./create-topic.sh
+```
+
+### Step 8
+
+Deploy the transcrip receiver and processor
 
 To deploy the Cloud Function, you will need to have the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) installed and configured.
 
 Run the following command to deploy the function:
+
+    ```sh
+gcloud run deploy transcription-receiver \
+  --function main \
+  --source receiver/ \
+  --base-image python313 \
+  --region europe-west1 \
+  --env-vars-file=.env \
+  --set-secrets="TENANT_ID=TENANT_ID:latest" \
+  --max-instances 10 \
+  --allow-unauthenticated
+    ```
 
 ```bash
 gcloud run deploy transcript-processor \
@@ -53,17 +84,28 @@ gcloud run deploy transcript-processor \
   --source processor/ \
   --base-image python313 \
   --region europe-west1 \
-  --env-vars-file=.env
+  --env-vars-file=.env \
+  --set-secrets="CLIENT_ID=CLIENT_ID:latest,CLIENT_SECRET=CLIENT_SECRET:latest,TENANT_ID=TENANT_ID:latest" \
+  --max-instances 20
+
 ```
 
 **Note:**
 - Replace the region with the Google Cloud region where you want to deploy the function (e.g., `us-central1`).
 
-### Step 7
+### Step 9
+Create the Pub/Sub subscription that triggers the processor function.
 
-In the .env file, replace the NOTIFICATION_URL with the URL of the function that is created in Step 6
+```bash
+chmod +x create-subscription.sh
+./create-subscription.sh
+```
 
-### Step 8
+### Step 10
+
+In the .env file, replace the NOTIFICATION_URL with the URL of the function called transcription-receiver that is created in Step 6
+
+### Step 11
 Run subscribe.py to create a subscription to call and meeting transcripts.
 
 

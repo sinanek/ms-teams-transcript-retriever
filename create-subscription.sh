@@ -7,7 +7,12 @@
 FUNCTION_NAME=$(gcloud run services describe transcript-processor --platform=managed --region=europe-west1 --format='value(status.url)')
 SUBSCRIPTION_NAME="process-transcripts"
 TOPIC_ID="transcript-notifications"
-SERVICE_ACCOUNT="633265597134-compute@developer.gserviceaccount.com"
+source .env
+
+if [ -z "$SERVICE_ACCOUNT" ]; then
+    echo "SERVICE_ACCOUNT not set in .env. Please set it to your Compute Engine default service account or similar."
+    exit 1
+fi
 
 gcloud pubsub subscriptions create $SUBSCRIPTION_NAME \
 --topic=$TOPIC_ID \

@@ -10,6 +10,7 @@ logging.basicConfig(level=logging.INFO)
 
 # --- Configuration ---
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT")
+target_tenant_id = os.environ.get("TENANT_ID")
 TOPIC_ID = "transcript-notifications"
 
 publisher = pubsub_v1.PublisherClient()
@@ -28,6 +29,16 @@ def main(request):
     request_json = request.get_json(silent=True)
     if request_json:
         logging.info("Received Microsoft Graph notification.")
+
+        # Validate Tenant ID
+        
+        if target_tenant_id:
+            for notification in request_json.get('value', []):
+                tenant_id = notification.get('tenantId')
+                if tenant_id != target_tenant_id:
+                    logging.warning(f"Unauthorized tenant: {tenant_id}")
+                    return jsonify({"error": "Unauthorized"}), 401
+
         try:
             # Publish message to Pub/Sub
             message_data = json.dumps(request_json).encode("utf-8")

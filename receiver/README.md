@@ -14,6 +14,8 @@ gcloud run deploy transcription-receiver \
   --base-image python313 \
   --region europe-west1 \
   --env-vars-file=.env \
+  --set-secrets="TENANT_ID=TENANT_ID:latest" \
+  --max-instances 10 \
   --allow-unauthenticated
     ```
 
