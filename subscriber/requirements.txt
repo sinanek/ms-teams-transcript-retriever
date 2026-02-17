@@ -1,0 +1,5 @@
+azure-identity
+msgraph-beta-sdk
+python-dotenv
+flask
+functions-framework

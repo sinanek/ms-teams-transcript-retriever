@@ -260,8 +260,12 @@ async def fetch_transcript(resource_url):
             if transcript_content_bytes:
                 transcript_content = transcript_content_bytes.decode('utf-8')
 
-            # Summarize the transcript
-            summary = await summarize_with_gemini(transcript_content)
+            # Summarize the transcript (optional, continue if it fails)
+            summary = None
+            try:
+                summary = await summarize_with_gemini(transcript_content)
+            except Exception as e:
+                logging.error(f"Unexpected error during summarization: {e}")
             
             # Fetch meeting participants and their recordings folder
             meeting_info = await graph_client.users.by_user_id(user_id).online_meetings.by_online_meeting_id(meeting_id).get()
@@ -346,22 +350,25 @@ async def fetch_transcript(resource_url):
                             if attendee.identity and attendee.identity.user:
                                 attendee_id = attendee.identity.user.id
                                 display_name = attendee.identity.user.display_name
-                                print(f"  - {display_name if display_name else attendee_id}")
-                                att_drive = await graph_client.users.by_user_id(attendee_id).drive.get()
-                                print(f"    Drive ID: {att_drive.id}")
-                                recordings_folder = await graph_client.drives.by_drive_id(att_drive.id).special.by_drive_item_id('recordings').get()
-                                if recordings_folder and recordings_folder.id:
-                                    drive_id = recordings_folder.parent_reference.drive_id
-                                    recordings_folder_id = recordings_folder.id
-                                    # Upload the transcript
-                                    await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(recordings_folder_id).children.by_drive_item_id1(transcript_filename).content.put(transcript_content_bytes)
-                                    print(f"Transcript uploaded successfully: {transcript_filename} for attendee: {display_name if display_name else attendee_id}")
-
-                                    # Upload the summary
-                                    if summary:
-                                        summary_bytes = summary.encode('utf-8')
-                                        await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(recordings_folder_id).children.by_drive_item_id1(summary_filename).content.put(summary_bytes)
-                                        print(f"Summary uploaded successfully: {summary_filename} for attendee: {display_name if display_name else attendee_id}")
+                                logging.info(f"  - {display_name if display_name else attendee_id}")
+                                try:
+                                    att_drive = await graph_client.users.by_user_id(attendee_id).drive.get()
+                                    logging.info(f"    Drive ID: {att_drive.id}")
+                                    recordings_folder = await graph_client.drives.by_drive_id(att_drive.id).special.by_drive_item_id('recordings').get()
+                                    if recordings_folder and recordings_folder.id:
+                                        drive_id = recordings_folder.parent_reference.drive_id
+                                        recordings_folder_id = recordings_folder.id
+                                        # Upload the transcript
+                                        await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(recordings_folder_id).children.by_drive_item_id1(transcript_filename).content.put(transcript_content_bytes)
+                                        logging.info(f"Transcript uploaded successfully: {transcript_filename} for attendee: {display_name if display_name else attendee_id}")
+    
+                                        # Upload the summary
+                                        if summary:
+                                            summary_bytes = summary.encode('utf-8')
+                                            await graph_client.drives.by_drive_id(drive_id).items.by_drive_item_id(recordings_folder_id).children.by_drive_item_id1(summary_filename).content.put(summary_bytes)
+                                            logging.info(f"Summary uploaded successfully: {summary_filename} for attendee: {display_name if display_name else attendee_id}")
+                                except Exception as e:
+                                    logging.error(f"Error uploading to attendee {display_name}'s drive: {e}")
 
         except Exception as e:
             logging.error(f"Error fetching transcript or participants: {e}")

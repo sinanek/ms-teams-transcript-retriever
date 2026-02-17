@@ -19,7 +19,17 @@ Create an app registration on portal.azure.com
 
 ### Step 2
 Give the app the following permissions
-![alt text](images/permissions.png)
+| File | Operation | API Endpoint / Resource | Required Application Permission | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| `processor/main.py` | Get User | `GET /users/{id}` | **User.Read.All** | |
+| | List Events | `GET /users/{id}/events` | **Calendars.ReadWrite** | `ReadWrite` needed for the Update operation below. |
+| | Update Event | `PATCH /users/{id}/events/{id}` | **Calendars.ReadWrite** | |
+| | Send Mail | `POST /users/{id}/sendMail` | **Mail.Send** | |
+| | Get Meeting | `GET /users/{id}/onlineMeetings/{id}` | **OnlineMeetings.Read.All** | |
+| | Get Transcript | `GET .../transcripts/{id}/content` | **OnlineMeetingTranscript.Read.All** | Required to read the actual transcript content. |
+| | Get Drive Folder | `GET /drives/{id}/special/recordings` | **Files.ReadWrite.All** | `ReadWrite` needed for the Upload operation below. |
+| | Upload File | `PUT /drives/{id}/items/{id}/content` | **Files.ReadWrite.All** | |
+| `subscribe.py` | Create Subscription | `POST /subscriptions`<br>Resource: `.../onlineMeetings/getAllTranscripts` | **OnlineMeetings.Read.All`<br>`OnlineMeetingTranscript.Read.All** | |
 
 ### Step 3
 Create a client secret and copy the key
@@ -37,36 +47,71 @@ Grant-CsApplicationAccessPolicy -PolicyName transcript-policy -Global
 More on access policies here: https://learn.microsoft.com/en-us/graph/cloud-communication-online-meeting-application-access-policy#supported-permissions-and-additional-resources
 
 ### Step 5
-Take the application id + tenant id for the app registration and the key you just created and configure the variables in a .env file (example provided in .env.example)
-![alt text](images/image-2.png)
+Take the application id + tenant id for the app registration and the key you just created. You will need these for the next steps.
 ![alt text](images/image-2.png)
 
-### Step 6
-Create the secrets in Google Cloud Secret Manager. The deploy commands below expect these secrets to verify the tenant and authenticate with Microsoft Graph.
+## Deployment Options
 
+### Option 1: Terraform (Recommended)
+
+This project includes Terraform configurations to automate the deployment of all GCP resources, including Cloud Functions, Pub/Sub topics, Secrets, and Cloud Scheduler.
+
+1.  **Navigate to the terraform directory**:
+    ```bash
+    cd terraform
+    ```
+
+2.  **Initialize Terraform**:
+    ```bash
+    terraform init
+    ```
+
+3.  **Create a `terraform.tfvars` file**:
+    ```hcl
+    project_id    = "your-project-id"
+    region        = "europe-west1"
+    client_id     = "your-client-id"
+    client_secret = "your-client-secret"
+    tenant_id     = "your-tenant-id"
+    ```
+
+4.  **Deploy**:
+    You can use the provided `Makefile` to deploy easily (it loads variables from your `.env` file):
+    ```bash
+    make deploy
+    ```
+    Alternatively, using Terraform directly:
+    ```bash
+    cd terraform
+    terraform apply
+    ```
+
+For more details, see the [Terraform Deployment Guide](terraform/README.md).
+
+---
+
+### Option 2: Manual Deployment
+
+If you prefer to deploy manually using the Google Cloud SDK and provided scripts, follow these steps:
+
+#### 1. Configure Environment
+Create a `.env` file based on `.env.example` with your Azure credentials.
+
+#### 2. Create Secrets
 ```bash
-printf "your-client-id" | gcloud secrets create CLIENT_ID --data-file=-
-printf "your-client-secret" | gcloud secrets create CLIENT_SECRET --data-file=-
-printf "your-tenant-id" | gcloud secrets create TENANT_ID --data-file=-
+chmod +x create-secrets.sh
+./create-secrets.sh
 ```
 
-### Step 7
-Create the Pub/Sub topic that the receiver will publish to.
-
+#### 3. Create Pub/Sub Topic
 ```bash
 chmod +x create-topic.sh
 ./create-topic.sh
 ```
 
-### Step 8
-
-Deploy the transcrip receiver and processor
-
-To deploy the Cloud Function, you will need to have the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) installed and configured.
-
-Run the following command to deploy the function:
-
-    ```sh
+#### 4. Deploy Cloud Functions
+```bash
+# Deploy Receiver
 gcloud run deploy transcription-receiver \
   --function main \
   --source receiver/ \
@@ -76,9 +121,8 @@ gcloud run deploy transcription-receiver \
   --set-secrets="TENANT_ID=TENANT_ID:latest" \
   --max-instances 10 \
   --allow-unauthenticated
-    ```
 
-```bash
+# Deploy Processor
 gcloud run deploy transcript-processor \
   --function main \
   --source processor/ \
@@ -87,26 +131,19 @@ gcloud run deploy transcript-processor \
   --env-vars-file=.env \
   --set-secrets="CLIENT_ID=CLIENT_ID:latest,CLIENT_SECRET=CLIENT_SECRET:latest,TENANT_ID=TENANT_ID:latest" \
   --max-instances 20
-
 ```
 
-**Note:**
-- Replace the region with the Google Cloud region where you want to deploy the function (e.g., `us-central1`).
-
-### Step 9
-Create the Pub/Sub subscription that triggers the processor function.
-
+#### 5. Create Pub/Sub Subscription
 ```bash
 chmod +x create-subscription.sh
 ./create-subscription.sh
 ```
 
-### Step 10
-
-In the .env file, replace the NOTIFICATION_URL with the URL of the function called transcription-receiver that is created in Step 6
-
-### Step 11
-Run subscribe.py to create a subscription to call and meeting transcripts.
+#### 6. Initialize Subscription
+Update the `NOTIFICATION_URL` in your `.env` with the URL from the `transcription-receiver` deployment, then run:
+```bash
+python subscribe.py
+```
 
 
 ## Local Testing
@@ -116,7 +153,7 @@ You can test your function locally without deploying it to the cloud. The `funct
 1.  **Start the local server:**
 
     ```bash
-    functions-framework --target main --source function/main.py --port 8080
+    functions-framework --target main --source receiver/main.py --port 8080
     ```
 
 2.  **Send a request to the local function:**
